@@ -86,5 +86,6 @@ We found that Jenkins _PR-_ and _Tag discovery_ is flaky and unreliable (especia
 
 ## Further Ideas
 * For each changed module, a pre-stage can determine what stages need to be executed and which can be skipped.
+* For a more synchronized deployment of all parts, the _deployment_ stage can be split into _delivery_ (preparing the deployment) and _provisioning_ stages.
 * A separate acceptance stage (3rd-party api tests, smoke tests, etc.) can be introduced between integration and deployment.
 * Get inspired and build your own pipeline 😉.
