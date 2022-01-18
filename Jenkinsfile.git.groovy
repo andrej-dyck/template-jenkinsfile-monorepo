@@ -30,10 +30,11 @@ String remoteBranch(String branchName) {
  * @return the tag of HEAD or 'undefined'
  */
 String currentTag() {
-  return sh(
+  String tag = sh(
     returnStdout: true,
-    script: "git name-rev --name-only --tags ${remoteHead()}"
+    script: "git tag --points-at ${remoteHead()} | head -n 1"
   ).trim()
+  return tag.allWhitespace ? 'undefined' : tag
 }
 
 /**
@@ -48,18 +49,19 @@ boolean isReleaseTag(String tag) {
  * @return the preceding release tag or 'undefined'
  */
 String precedingReleaseTag() {
-  def (_, prevTag, __) = releaseTags()
-  return !prevTag ? 'undefined' : prevTag
+  String gitTag = currentTag()
+  def (lastTag, secondButLastTag, _) = releaseTags(2)
+  return (gitTag == 'undefined' ? lastTag : secondButLastTag) ?: 'undefined'
 }
 
 /**
  * @param releaseTagERE - the unix extended regex expression (ERE) for release tags
  * @return list of all release tags in reverse order
  */
-List<String> releaseTags(String releaseTagERE = "^Release-[0-9]+(\\.[0-9]+(\\.[0-9]+)?)?\$") {
+List<String> releaseTags(int take = -1, String releaseTagERE = "^Release-[0-9]+(\\.[0-9]+(\\.[0-9]+)?)?\$") {
   return sh(
     returnStdout: true,
-    script: "git tag | grep -E \"$releaseTagERE\" | sort -V -r"
+    script: "git tag | grep -E \"$releaseTagERE\" | sort -V -r" + (take > 0 ? " | head -n $take" : '')
   ).readLines()
 }
 

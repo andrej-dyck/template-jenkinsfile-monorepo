@@ -39,9 +39,8 @@ List<String> determineChangedFiles(BuildSubject buildSubject, def git) {
     case BuildSubject.FEATURE:
       return git.changes(git.remoteBranch('main'))
     case BuildSubject.RELEASE:
-      // second to last release tag because head is expected to have a release tag!
       String prevRelease = git.precedingReleaseTag()
-      echo "Previous release: $prevRelease"
+      echo "Preceding release: $prevRelease"
       return git.changes(prevRelease)
   }
   return [] as List<String>

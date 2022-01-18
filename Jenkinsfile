@@ -1,6 +1,9 @@
 #!/usr/bin/env groovy
 
-/** Modules within this mono-repository. Must equal to the directory in root. */
+/** Jenkinsfile libraries cache */
+LinkedHashMap libs = [:]
+
+/** Modules within this mono-repository. Must equal to the directories in root. */
 Set<String> modules = ['backend-api', 'webclient', 'identity-provider'] as Set<String>
 
 /** What is being build */
@@ -21,7 +24,7 @@ pipeline {
   /** Agent */
   agent {
     kubernetes {
-      inheritFrom 'default'
+      inheritFrom 'ci-default'
       defaultContainer 'jnlp'
     }
   }
@@ -42,8 +45,8 @@ pipeline {
     stage('Subject') {
       steps {
         script {
-          def git = load 'Jenkinsfile.Git.groovy'
-          def changes = load 'Jenkinsfile.Changes.groovy'
+          def git = load(libs, 'git')
+          def changes = load(libs, 'changes')
 
           echo "Branch: ${env.BRANCH_NAME}"
           echo "Commit: ${env.GIT_COMMIT}"
@@ -67,8 +70,8 @@ pipeline {
         stage('Changes') { /** Changed Files & Modules */
           steps {
             script {
-              def git = load 'Jenkinsfile.Git.groovy'
-              def changes = load 'Jenkinsfile.Changes.groovy'
+              def git = load(libs, 'git')
+              def changes = load(libs, 'changes')
 
               /* determine changed files */
               changedFiles = changes.determineChangedFiles(buildSubject, git)
@@ -85,10 +88,11 @@ pipeline {
           steps {
             script {
               /* determine required stages */
-              requiredStages = allTruthyKeys([
+              requiredStages = allActiveKeys([
                 'integration': { notNothing(buildSubject) },
                 'compile'    : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE] },
                 'checks'     : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE] },
+//                'delivery'   : { buildSubject in [BuildSubject.MAIN] },
                 'deployment' : { buildSubject in [BuildSubject.MAIN, BuildSubject.RELEASE] }
               ])
               echo "Required stages: $requiredStages"
@@ -104,44 +108,60 @@ pipeline {
       parallel {
         stage('Backend-Api') {
           when { expression { stageName() in changedModules } }
+          environment {
+            MODULE = "${stageName()}"
+          }
           stages {
             stage('Dependencies') {
               steps {
-                echo 'run install'
+                echo "run install $MODULE/"
               }
             }
             stage('Compile') {
               when { expression { stageName() in requiredStages } }
               steps {
-                echo 'run build'
+                echo "run build $MODULE/"
               }
             }
             stage('Checks') {
               when { expression { stageName() in requiredStages } }
               steps {
-                echo 'run test'
+                echo "run test $MODULE/"
+              }
+              post {
+                always {
+                  echo 'publish results'
+                }
               }
             }
           }
         }
         stage('Webclient') {
           when { expression { stageName() in changedModules } }
+          environment {
+            MODULE = "${stageName()}"
+          }
           stages {
             stage('Dependencies') {
               steps {
-                echo 'run install'
+                dir("$MODULE") { echo 'run install' }
               }
             }
             stage('Compile') {
               when { expression { stageName() in requiredStages } }
               steps {
-                echo 'run build'
+                dir("$MODULE") { echo 'run build' }
               }
             }
             stage('Checks') {
               when { expression { stageName() in requiredStages } }
               steps {
-                echo 'run test'
+                dir("$MODULE") { echo 'run test' }
+              }
+              post {
+                always {
+                  echo 'publish results'
+                }
               }
             }
           }
@@ -155,40 +175,62 @@ pipeline {
       parallel {
         stage('Backend-Api') {
           when { expression { stageName() in changedModules } }
+          environment {
+            MODULE = "${stageName()}"
+          }
           stages {
             stage('App') {
+              when {
+                expression { deliveryIsNeeded(requiredStages) }
+              }
               steps {
                 echo 'build optimized'
               }
             }
             stage('Docker Image') {
+              when {
+                expression { deliveryIsNeeded(requiredStages) }
+              }
               steps {
-                echo 'docker build'
+                echo 'executor build'
               }
             }
             stage('Deployment') {
               steps {
-                echo 'terraform apply'
+                dir('backend-api/infrastructure') { 
+                  echo 'terraform apply'
+                }
               }
             }
           }
         }
         stage('Webclient') {
           when { expression { stageName() in changedModules } }
+          environment {
+            MODULE = "${stageName()}"
+          }
           stages {
             stage('App') {
+              when {
+                expression { deliveryIsNeeded(requiredStages) }
+              }
               steps {
-                echo 'build optimized'
+                dir('webclient') { echo 'build optimized' }
               }
             }
             stage('Docker Image') {
+              when {
+                expression { deliveryIsNeeded(requiredStages) }
+              }
               steps {
-                echo 'docker build'
+                echo 'executor build'
               }
             }
             stage('Deployment') {
               steps {
-                echo 'terraform apply'
+                dir('webclient/infrastructure') { 
+                  echo 'terraform apply'
+                }
               }
             }
           }
@@ -198,7 +240,9 @@ pipeline {
           stages {
             stage('Deployment') {
               steps {
-                echo 'terraform apply'
+                dir('identity-provider/infrastructure') { 
+                  echo 'terraform apply'
+                }
               }
             }
           }
@@ -210,26 +254,48 @@ pipeline {
   /** Post Notifications */
   post {
     unsuccessful {
-      echo "send notification!"
+      script { notifyTeam() }
     }
     fixed {
-      echo "send notification!"
+      script { notifyTeam() }
     }
   }
 }
 
+/** Loads a library file and caches it in libs */
+def load(LinkedHashMap libs, String libName) {
+  if (!(libName in libs.keySet())) {
+    libs[libName] = load "Jenkinsfile.${libName}.groovy"
+  }
+  return libs[libName]
+}
+
+/** Aborts the current build */
 void abortBuild() {
   currentBuild.result = 'ABORTED'
 }
 
-String stageName() {
-  return STAGE_NAME?.toLowerCase()
-}
-
+/** @return true iff buildSubject is not nothing and not null */
 boolean notNothing(BuildSubject buildSubject) {
   return !(buildSubject in [null, BuildSubject.NOTHING])
 }
 
-Set<String> allTruthyKeys(LinkedHashMap<String, Closure<Boolean>> map) {
-  return map.findAll { _, c -> c() }.collect { it.key } as Set<String>
+/** @return the keys of map where the associated condition yields true */
+Set<String> allActiveKeys(LinkedHashMap<String, Closure<Boolean>> map) {
+  return map.findAll { _, c -> c() }.keySet()
+}
+
+/** @return lowercase stage name */
+String stageName() {
+  return STAGE_NAME?.toLowerCase()
+}
+
+/** @return whenever delivery is required; or needed by deployment */
+boolean deliveryIsNeeded(Set<String> requiredStages) {
+  return ['delivery', 'deployment'].any { it in requiredStages }
+}
+
+/** Notifies the dev team */
+void notifyTeam() {
+  echo "send notification!"
 }
