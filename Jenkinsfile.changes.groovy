@@ -7,8 +7,9 @@
 BuildSubject determineSubject(String branch) {
   switch (branch) {
     case 'main': return BuildSubject.MAIN
-    case ~/(feature|.*fix)\/(.+)/: return BuildSubject.FEATURE
+    case ~/(feature|bugfix)\/(.+)/: return BuildSubject.FEATURE
     case ~/release\\/(.+)/: return BuildSubject.RELEASE
+    case ~/hotfix\\/(.+)/: return BuildSubject.HOTFIX
   }
   return BuildSubject.NOTHING
 }
@@ -28,6 +29,15 @@ BuildSubject guardRelease(BuildSubject buildSubject, Closure<Boolean> requiremen
 }
 
 /**
+ * @param buildSubject - current buildSubject
+ * @param requirement - requirement for hotfix
+ * @return true iff buildSubject is a hotfix and satisfies the requirement
+ */
+boolean isHotfixWith(BuildSubject buildSubject, Closure<Boolean> requirement) {
+  return buildSubject == BuildSubject.HOTFIX && requirement()
+}
+
+/**
  * @param buildSubject
  * @param git - the git functions
  * @return all changed files according to git diff based on buildSubject
@@ -38,7 +48,7 @@ List<String> determineChangedFiles(BuildSubject buildSubject, def git) {
       return git.changes()
     case BuildSubject.FEATURE:
       return git.changes(git.remoteBranch('main'))
-    case BuildSubject.RELEASE:
+    case [BuildSubject.RELEASE, BuildSubject.HOTFIX]:
       String prevRelease = git.precedingReleaseTag()
       echo "Preceding release: $prevRelease"
       return git.changes(prevRelease)

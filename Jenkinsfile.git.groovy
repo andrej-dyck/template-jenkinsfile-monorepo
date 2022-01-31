@@ -42,7 +42,7 @@ String currentTag() {
  * @return true iff tag matches the release-tag pattern
  */
 boolean isReleaseTag(String tag) {
-  return tag =~ /Release-\d+(\.\d+(\.\d+)?)?/
+  return tag =~ /Release\\/\d+(\.\d+(\.\d+)?)?/
 }
 
 /**
@@ -58,7 +58,7 @@ String precedingReleaseTag() {
  * @param releaseTagERE - the unix extended regex expression (ERE) for release tags
  * @return list of all release tags in reverse order
  */
-List<String> releaseTags(int take = -1, String releaseTagERE = "^Release-[0-9]+(\\.[0-9]+(\\.[0-9]+)?)?\$") {
+List<String> releaseTags(int take = -1, String releaseTagERE = "^Release/[0-9]+(\\.[0-9]+(\\.[0-9]+)?)?\$") {
   return sh(
     returnStdout: true,
     script: "git tag | grep -E \"$releaseTagERE\" | sort -V -r" + (take > 0 ? " | head -n $take" : '')

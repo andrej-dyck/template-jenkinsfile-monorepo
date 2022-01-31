@@ -8,7 +8,7 @@ Set<String> modules = ['backend-api', 'webclient', 'identity-provider'] as Set<S
 
 /** What is being build */
 enum BuildSubject {
-  MAIN, FEATURE, RELEASE, NOTHING
+  MAIN, FEATURE, RELEASE, HOTFIX, NOTHING
 }
 
 /** Values will be assigned in the 'Changes' stage */
@@ -87,13 +87,16 @@ pipeline {
         stage('Required Stages') { /** Required Pipeline Stages */
           steps {
             script {
+              def git = load(libs, 'git')
+              def changes = load(libs, 'changes')
+
               /* determine required stages */
               requiredStages = allActiveKeys([
                 'integration': { notNothing(buildSubject) },
-                'compile'    : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE] },
-                'checks'     : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE] },
+                'compile'    : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE, BuildSubject.HOTFIX] },
+                'checks'     : { buildSubject in [BuildSubject.MAIN, BuildSubject.FEATURE, BuildSubject.HOTFIX] },
 //                'delivery'   : { buildSubject in [BuildSubject.MAIN] },
-                'deployment' : { buildSubject in [BuildSubject.MAIN, BuildSubject.RELEASE] }
+                'deployment' : { buildSubject in [BuildSubject.MAIN, BuildSubject.RELEASE] || changes.isHotfixWith(buildSubject, { git.isReleaseTag(gitTag) }) }
               ])
               echo "Required stages: $requiredStages"
             }
@@ -197,7 +200,7 @@ pipeline {
             }
             stage('Deployment') {
               steps {
-                dir('backend-api/infrastructure') { 
+                dir('backend-api/infrastructure') {
                   echo 'terraform apply'
                 }
               }
@@ -228,7 +231,7 @@ pipeline {
             }
             stage('Deployment') {
               steps {
-                dir('webclient/infrastructure') { 
+                dir('webclient/infrastructure') {
                   echo 'terraform apply'
                 }
               }
@@ -240,7 +243,7 @@ pipeline {
           stages {
             stage('Deployment') {
               steps {
-                dir('identity-provider/infrastructure') { 
+                dir('identity-provider/infrastructure') {
                   echo 'terraform apply'
                 }
               }
@@ -275,22 +278,22 @@ void abortBuild() {
   currentBuild.result = 'ABORTED'
 }
 
-/** @return true iff buildSubject is not nothing and not null */
+/** @return true iff buildSubject is not nothing and not null  */
 boolean notNothing(BuildSubject buildSubject) {
   return !(buildSubject in [null, BuildSubject.NOTHING])
 }
 
-/** @return the keys of map where the associated condition yields true */
+/** @return the keys of map where the associated condition yields true  */
 Set<String> allActiveKeys(LinkedHashMap<String, Closure<Boolean>> map) {
   return map.findAll { _, c -> c() }.keySet()
 }
 
-/** @return lowercase stage name */
+/** @return lowercase stage name  */
 String stageName() {
   return STAGE_NAME?.toLowerCase()
 }
 
-/** @return whenever delivery is required; or needed by deployment */
+/** @return whenever delivery is required; or needed by deployment  */
 boolean deliveryIsNeeded(Set<String> requiredStages) {
   return ['delivery', 'deployment'].any { it in requiredStages }
 }

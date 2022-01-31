@@ -29,16 +29,18 @@ Furthermore, `release` branches are used for releases; as they provide the possi
 The changes are determined depending on what is being built (aka on which branch we are).
 * On `main` (as we work with merge commits), the diff are the changes to the _previous commit_ (i.e., _HEAD~1_) on `main`.
 * On `feature` (and `bugfix`), the diff are the changes between the current branch and `main`.
-* On `release`, the diff are the changes since the previous release (i.e., the preceding _release tag_)[^3][^4]
+* On `release` (and `hotfix`), the diff are the changes since the previous release (i.e., the preceding _release tag_)[^3][^4]
 
 [^3]: To determine the order of releases, the method in this template uses `sort -V` to sort by versions.
 
 [^4]: As the very first release wouldn't build (it not having a preceding release tag), we recommend tagging the initial commit of the repository (e.g., as Release-0). 
 
 ### Deployment vs Delivery
-In our workflow, all changes in `main` are deployed to a _staging_ environment (the delivery of a release candidate). Then, _releases_ are deployed to the _production_ environment.
+In our workflow, all changes in `main` are deployed to a _staging_ environment (the delivery of a release candidate). Then, _releases_ and _hotfixes_ are deployed to the _production_ environment.
 
-Note: since all modules should be deployable independently, they need to have their own infrastructure as code specifications.
+We decided to deploy `hotfix/*` directly into _production_, once their branch head has a release tag. So they are quite similar to `release/*` branches; but with a different name and that they are always build and tested.  
+
+Note: Since all modules should be deployable independently, they need to have their own infrastructure as code specifications.
 
 ### Jenkins Declarative Pipeline Limitations
 Unfortunately, Jenkins does not allow the extraction of full stage declarations (with agents, environments, conditionals, steps) into separate files. Either only Jenkins steps that can be written in `step` (e.g., `sh`) can be extracted or a full `pipeline`. The latter is, however, limited by the fact that Jenkins allows only exactly one pipeline to run.
